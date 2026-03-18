@@ -9,7 +9,7 @@ const app = express();
 
 app.use(
   cors({
-    origin: process.env.CLIENT_URL,
+    origin: /zingy-salamander-a0e8e2\.netlify\.app$/,
   }),
 );
 app.use(express.json());
