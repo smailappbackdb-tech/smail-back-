@@ -32,7 +32,7 @@ router.get(
     console.log("Redirect vers:", `${process.env.CLIENT_URL}/auth/callback?token=${token}`);
     
       // Redirige vers le frontend avec le token dans l'URL
-     res.redirect(`${process.env.CLIENT_URL}/google_callback.html?token=${token}`);
+     res.redirect(`${process.env.CLIENT_URL}/auht_callback.html?token=${token}`);
       
     } catch (err) {
       res
