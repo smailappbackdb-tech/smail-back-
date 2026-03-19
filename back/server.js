@@ -9,9 +9,11 @@ const app = express();
 
 app.use(
   cors({
-    origin: /zingy-salamander-a0e8e2\.netlify\.app$/,
+    origin: new RegExp(
+      process.env.CLIENT_URL?.replace(/\./g, '\\.') + '$'
+    ),
   }),
-);
+)
 app.use(express.json());
 app.use("/api/auth", authRoute);
 
