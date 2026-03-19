@@ -26,7 +26,11 @@ router.get(
     try {
       const token = JWT.sign({ id: req.user._id }, process.env.JWT_SECRET, {
         expiresIn: "1h",
-      });
+      }); 
+
+       console.log("CLIENT_URL:", process.env.CLIENT_URL);
+    console.log("Redirect vers:", `${process.env.CLIENT_URL}/auth/callback?token=${token}`);
+    
       // Redirige vers le frontend avec le token dans l'URL
       res.redirect(`${process.env.CLIENT_URL}/auth/callback?token=${token}`);
     } catch (err) {
