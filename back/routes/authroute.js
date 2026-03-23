@@ -190,4 +190,22 @@ router.post("/reset-password", async (req, res) => {
   }
 });
 
+// get user name :  
+router.get("/user/:id", async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select("username");
+    if (!user) {
+      return res.status(404).json({ message: "Utilisateur non trouvé." });
+    }
+    res.json({ username: user.username });
+  } catch (err) {
+    console.error(err);
+      
+    res.status(500).json({ message: "Erreur serveur." });
+
+  }
+});
+
+
+
 export default router;
