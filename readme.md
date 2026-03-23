@@ -1,7 +1,7 @@
 # 🔐 Auth API — Documentation Frontend
 # Destinée au développeur frontend et responsable UX Abdou Amalou
 
-> Base URL :  let backUrl = 
+> Base URL :  let backUrl = smail-app-production.up.railway.app
 
 
 
