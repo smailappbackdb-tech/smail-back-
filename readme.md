@@ -141,6 +141,22 @@ Flow recommande:
 - En succes: redirection vers dashboard admin.
 - En echec 403: affiche `Tu n'es pas admin.`
 
+### Protection du dashboard admin
+
+Le frontend peut cacher la page admin si aucun token n'existe, mais la vraie securite doit etre faite cote backend.
+
+Frontend:
+
+- verifier si un token existe avant d'ouvrir le dashboard admin
+- rediriger vers `/admin-login.html` si le token est absent
+- si la route admin renvoie `401` ou `403`, supprimer le token et revenir au login admin
+
+Backend:
+
+- verifier le JWT sur chaque route admin
+- verifier que `role === "admin"`
+- refuser l'acces avec `401` ou `403` si l'utilisateur n'est pas autorise
+
 ### Forgot password
 
 - `POST /api/auth/forgot-password`
