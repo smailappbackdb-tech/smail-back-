@@ -111,6 +111,36 @@ const data = await api("/api/auth/login", {
 localStorage.setItem("token", data.token);
 ```
 
+### Admin login (pour domaine admin)
+
+- `POST /api/auth/admin-login`
+- Si les identifiants sont bons et que l'utilisateur est admin: succes + token.
+- Si l'utilisateur n'est pas admin: erreur 403 avec message `Tu n'es pas admin.`
+
+```js
+try {
+  const data = await api("/api/auth/admin-login", {
+    method: "POST",
+    body: JSON.stringify({
+      email: "admin@example.com",
+      password: "adminPassword123",
+    }),
+  });
+
+  localStorage.setItem("token", data.token);
+  window.location.href = "/admin/dashboard";
+} catch (error) {
+  alert(error.message);
+}
+```
+
+Flow recommande:
+
+- Sur ton sous-domaine admin (ex: `admin.tondomaine.com`) affiche une page login admin.
+- Cette page appelle `POST /api/auth/admin-login`.
+- En succes: redirection vers dashboard admin.
+- En echec 403: affiche `Tu n'es pas admin.`
+
 ### Forgot password
 
 - `POST /api/auth/forgot-password`
@@ -280,6 +310,7 @@ export default function AdminClientsTable() {
 | GET | /api/auth/google/failure | Non | Echec OAuth Google |
 | POST | /api/auth/register | Non | Creation de compte |
 | POST | /api/auth/login | Non | Login email/password |
+| POST | /api/auth/admin-login | Non | Login reserve admin |
 | POST | /api/auth/forgot-password | Non | Demande reset mot de passe |
 | POST | /api/auth/reset-password | Non | Validation reset mot de passe |
 | GET | /api/auth/user/:id | Non | Username par id |

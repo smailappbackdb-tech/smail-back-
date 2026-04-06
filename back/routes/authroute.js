@@ -115,6 +115,57 @@ router.post("/login", async (req, res) => {
 });
 
 // ─────────────────────────────────────────
+// ADMIN LOGIN
+// ─────────────────────────────────────────
+
+router.post("/admin-login", async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ message: "Email et mot de passe requis." });
+  }
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ message: "Email introuvable." });
+    }
+
+    if (!user.password) {
+      return res.status(400).json({
+        message: "Ce compte utilise Google. Connectez-vous avec Google.",
+      });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Mot de passe incorrect." });
+    }
+
+    if (user.role !== "admin") {
+      return res.status(403).json({ message: "Tu n'es pas admin." });
+    }
+
+    const token = JWT.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "1h",
+    });
+
+    return res.status(200).json({
+      token,
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Erreur serveur." });
+  }
+});
+
+// ─────────────────────────────────────────
 // FORGOT PASSWORD
 // ─────────────────────────────────────────
 
