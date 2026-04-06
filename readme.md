@@ -19,6 +19,7 @@ Le serveur monte les routes suivantes:
 - `/api/userpassword`
 - `/api/password`
 - `/api/changestatusclient`
+- `/api/dashboardinformation`
 
 La route `/api/password` pointe vers le meme fichier que `/api/userpassword`.
 
@@ -200,6 +201,69 @@ await api(`/api/changestatusclient/${clientId}/validate`, {
 });
 ```
 
+## 5) Donnees du dashboard admin
+
+- `GET /api/dashboardinformation/clients`
+- Cette route est reservee aux administrateurs.
+- Elle renvoie tous les clients avec `username`, `email` et `status`.
+
+```js
+const data = await api("/api/dashboardinformation/clients", {
+  method: "GET",
+});
+
+console.log(data.clients);
+```
+
+### Exemple React
+
+```jsx
+import { useEffect, useState } from "react";
+
+export default function AdminClientsTable() {
+  const [clients, setClients] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadClients = async () => {
+      try {
+        const data = await api("/api/dashboardinformation/clients", {
+          method: "GET",
+        });
+        setClients(data.clients || []);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadClients();
+  }, []);
+
+  if (loading) return <p>Chargement...</p>;
+
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Email</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {clients.map((client) => (
+          <tr key={client._id}>
+            <td>{client.username}</td>
+            <td>{client.email}</td>
+            <td>{client.status ? "Valide" : "Non valide"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+```
+
 ## Gestion du token JWT
 
 - Login et Google renvoient un token JWT.
@@ -224,6 +288,7 @@ await api(`/api/changestatusclient/${clientId}/validate`, {
 | PUT | /api/userpassword/change-password | Oui (JWT) | Changer mot de passe |
 | PUT | /api/password/change-password | Oui (JWT) | Alias de change-password |
 | PUT | /api/changestatusclient/:id/validate | Oui (Admin) | Valider ou invalider un client |
+| GET | /api/dashboardinformation/clients | Oui (Admin) | Lister tous les clients avec username, email et status |
 
 ## Important
 

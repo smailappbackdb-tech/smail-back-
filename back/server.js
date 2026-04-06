@@ -2,6 +2,7 @@ import cors from "cors";
 import express from "express";
 import connectDB from "./DB/connection.js";
 import authRoute from "./routes/authroute.js";
+import dashboardInformationRoute from "./routes/dashboardinformation.js";
 import usernameRoute from "./routes/username.js";
 import userPasswordRoute from "./routes/userpassword.js"; 
 import password from "./routes/userpassword.js";
@@ -19,6 +20,7 @@ app.use(
 );
 app.use(express.json());
 app.use("/api/auth", authRoute);
+app.use("/api/dashboardinformation", dashboardInformationRoute);
 app.use("/api/username", usernameRoute);
 app.use("/api/userpassword", userPasswordRoute); 
 app.use("/api/password", password);
