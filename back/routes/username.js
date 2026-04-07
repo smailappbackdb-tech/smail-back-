@@ -24,22 +24,22 @@ const verifyToken = (req, res, next) => {
 };
 
 // ─────────────────────────────────────────
-// GET USERNAME FROM TOKEN
+// GET USERNAME + EMAIL FROM TOKEN
 // ─────────────────────────────────────────
 router.post("/me", verifyToken, async (req, res) => {
   try {
-    const user = await User.findById(req.userId).select("username");
+    const user = await User.findById(req.userId).select("username email");
 
     if (!user) {
       return res.status(404).json({ message: "Utilisateur non trouvé." });
     }
 
-    res.status(200).json({ username: user.username });
+    res.status(200).json({ username: user.username, email: user.email });
   } catch (err) {
     res
       .status(500)
       .json({
-        message: "Erreur lors de la récupération du nom d'utilisateur.",
+        message: "Erreur lors de la récupération des informations utilisateur.",
       });
   }
 }); 
@@ -68,9 +68,9 @@ router.put("/edit-username", verifyToken, async (req, res) => {
       req.userId,
       { username: newUsername },
       { new: true }
-    ).select("username");
+    ).select("username email");
 
-    res.status(200).json({ username: user.username });
+    res.status(200).json({ username: user.username, email: user.email });
   } catch (err) {
     res.status(500).json({ message: "Erreur lors de la mise à jour du nom d'utilisateur." });
   }
