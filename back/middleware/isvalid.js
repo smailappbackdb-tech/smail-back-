@@ -4,8 +4,11 @@ import User from "../models/client.js";
 const isValidClient = async (req, res, next) => {
 	const token = req.headers.authorization?.split(" ")[1];
 
+	// Token is optional - allow requests to proceed and let handlers check status
 	if (!token) {
-		return res.status(401).json({ message: "Token manquant." });
+		req.user = null;
+		req.userId = null;
+		return next();
 	}
 
 	try {
@@ -13,13 +16,7 @@ const isValidClient = async (req, res, next) => {
 		const user = await User.findById(decoded.id).select("username role status");
 
 		if (!user) {
-			return res.status(404).json({ message: "Utilisateur non trouvé." });
-		}
-
-		
-
-		if (!user.status) {
-			return res.status(403).json({ message: "Compte client non validé." });
+			return res.status(401).json({ message: "Utilisateur non trouvé." });
 		}
 
 		req.user = user;
