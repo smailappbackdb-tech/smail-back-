@@ -6,6 +6,7 @@ import Progress from "../models/progress.js";
 const router = express.Router();
 
 const REQUIRED_ENV = ["VIDEO_CDN_BASE_URL", "CDN_SIGNING_SECRET"];
+const LOG_PREFIX = "[videos]";
 
 const getMissingEnv = () => REQUIRED_ENV.filter((key) => !process.env[key]);
 
@@ -44,7 +45,7 @@ const videoRateLimit = (req, res, next) => {
   if (existing.count >= VIDEO_RATE_LIMIT_MAX_REQUESTS) {
     const retryAfterSeconds = Math.max(
       1,
-      Math.ceil((existing.resetAt - now) / 1000),
+      Math.ceil((existing.resetAt - now) / 1000)
     );
 
     res.set({
@@ -65,7 +66,7 @@ const videoRateLimit = (req, res, next) => {
   res.set({
     "X-RateLimit-Limit": String(VIDEO_RATE_LIMIT_MAX_REQUESTS),
     "X-RateLimit-Remaining": String(
-      VIDEO_RATE_LIMIT_MAX_REQUESTS - existing.count,
+      VIDEO_RATE_LIMIT_MAX_REQUESTS - existing.count
     ),
     "X-RateLimit-Reset": String(Math.floor(existing.resetAt / 1000)),
   });
@@ -73,10 +74,26 @@ const videoRateLimit = (req, res, next) => {
   return next();
 };
 
-// GET /api/videos/:videoId/url - Obtenir URL signée de la vidéo
+// ─────────────────────────────────────────────────────────────
+// GET /api/videos/:videoId/url — Obtenir URL signée de la vidéo
+// ─────────────────────────────────────────────────────────────
 router.get("/:videoId/url", isValidClient, videoRateLimit, async (req, res) => {
   try {
+    console.log(`${LOG_PREFIX} GET /:videoId/url`, {
+      videoId: req.params.videoId,
+      userId: req.userId,
+      role: req.user?.role,
+      status: req.user?.status,
+    });
+
     if (req.user?.role !== "client" || req.user?.status !== true) {
+      console.warn(`${LOG_PREFIX} accès refusé à l'URL vidéo`, {
+        videoId: req.params.videoId,
+        userId: req.userId,
+        role: req.user?.role,
+        status: req.user?.status,
+      });
+
       return res.status(403).json({
         message: "Déverrouillez pour accéder au contenu.",
       });
@@ -84,7 +101,7 @@ router.get("/:videoId/url", isValidClient, videoRateLimit, async (req, res) => {
 
     const missingEnv = getMissingEnv();
     if (missingEnv.length > 0) {
-      console.error("Variables CDN manquantes:", missingEnv);
+      console.error(`${LOG_PREFIX} variables CDN manquantes`, missingEnv);
       return res.status(500).json({
         message: "Configuration vidéo manquante sur le serveur.",
       });
@@ -94,23 +111,57 @@ router.get("/:videoId/url", isValidClient, videoRateLimit, async (req, res) => {
 
     const video = await Video.findById(videoId);
     if (!video) {
+      console.warn(`${LOG_PREFIX} vidéo introuvable`, { videoId });
       return res.status(404).json({ message: "Vidéo non trouvée." });
     }
 
-    const publicId = video.publicId;
+    // Le chemin B2 est stocké en base dans b2FileName, avec fallback legacy sur publicId.
+    const storagePath = video.b2FileName || video.publicId;
+
+    if (!storagePath) {
+      console.warn(`${LOG_PREFIX} chemin vidéo manquant en base`, { videoId });
+      return res.status(404).json({ message: "Vidéo introuvable." });
+    }
 
     const expiresAt = Math.floor(Date.now() / 1000) + 900; // 15 minutes
 
-    const baseCdnUrl = String(process.env.VIDEO_CDN_BASE_URL || "").replace(/\/+$/, "");
-    const encodedPath = String(publicId)
+    const baseCdnUrl = String(process.env.VIDEO_CDN_BASE_URL || "").replace(
+      /\/+$/,
+      ""
+    );
+
+    // ✅ Chemin RAW (sans encodage) — c'est ce que url.pathname retourne dans le worker
+    // Le worker décode automatiquement les segments, donc on doit signer le chemin brut
+    const rawPath = `/${String(storagePath).replace(/^\/+/, "")}`;
+
+    // ✅ Chemin encodé segment par segment — uniquement pour construire l'URL HTTP finale
+    const encodedPath = String(storagePath)
       .split("/")
       .filter(Boolean)
       .map((segment) => encodeURIComponent(segment))
       .join("/");
 
-    const path = `/${encodedPath}`;
-    const token = await signUrl(`${path}:${expiresAt}`, process.env.CDN_SIGNING_SECRET);
-    const videoUrl = `${baseCdnUrl}${path}?token=${token}&expires=${expiresAt}`;
+    // ✅ On signe rawPath (identique à url.pathname côté worker)
+   // ✅ On signe rawPath (identique à url.pathname côté worker)
+const messageToSign = `${rawPath}:${expiresAt}`;
+
+// 🔍 DEBUG TEMPORAIRE
+console.log("[DEBUG SIGN] rawPath      :", rawPath);
+console.log("[DEBUG SIGN] expiresAt    :", expiresAt);
+console.log("[DEBUG SIGN] message      :", messageToSign);
+console.log("[DEBUG SIGN] secret       :", process.env.CDN_SIGNING_SECRET);
+
+const token = await signUrl(messageToSign, process.env.CDN_SIGNING_SECRET);
+
+console.log("[DEBUG SIGN] token généré :", token);
+    // ✅ token encodé dans l'URL pour éviter les caractères spéciaux base64 (+, /, =)
+    const videoUrl = `${baseCdnUrl}/${encodedPath}?token=${encodeURIComponent(token)}&expires=${expiresAt}`;
+
+    console.log(`${LOG_PREFIX} URL signée générée`, {
+      videoId,
+      videoTitle: video.title,
+      expiresAt,
+    });
 
     res.set({
       "Cache-Control": "no-store, no-cache, must-revalidate, private",
@@ -129,10 +180,23 @@ router.get("/:videoId/url", isValidClient, videoRateLimit, async (req, res) => {
   }
 });
 
-// POST /api/videos/:videoId/mark-watched - Marquer une vidéo comme vue
+// ─────────────────────────────────────────────────────────────
+// POST /api/videos/:videoId/mark-watched — Marquer vidéo vue
+// ─────────────────────────────────────────────────────────────
 router.post("/:videoId/mark-watched", isValidClient, async (req, res) => {
   try {
+    console.log(`${LOG_PREFIX} POST /:videoId/mark-watched`, {
+      videoId: req.params.videoId,
+      userId: req.userId,
+      watchedDuration: req.body?.watchedDuration,
+    });
+
     if (!req.user?.status) {
+      console.warn(`${LOG_PREFIX} marquage vue refusé`, {
+        videoId: req.params.videoId,
+        userId: req.userId,
+      });
+
       return res.status(403).json({ message: "Accès refusé." });
     }
 
@@ -142,6 +206,7 @@ router.post("/:videoId/mark-watched", isValidClient, async (req, res) => {
 
     const video = await Video.findById(videoId);
     if (!video) {
+      console.warn(`${LOG_PREFIX} vidéo introuvable pour marquage vue`, { videoId });
       return res.status(404).json({ message: "Vidéo non trouvée." });
     }
 
@@ -152,7 +217,7 @@ router.post("/:videoId/mark-watched", isValidClient, async (req, res) => {
         watchedAt: new Date(),
         watchedDuration: watchedDuration || 0,
       },
-      { upsert: true, new: true },
+      { upsert: true, new: true }
     );
 
     return res.status(200).json({
@@ -164,41 +229,87 @@ router.post("/:videoId/mark-watched", isValidClient, async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Erreur marquer vidéo vue:", error);
+    console.error(`${LOG_PREFIX} erreur marquer vidéo vue`, error);
     return res.status(500).json({ message: "Erreur serveur." });
   }
 });
 
-// GET /api/videos/:videoId/check - Debug existence CDN
+// ─────────────────────────────────────────────────────────────
+// GET /api/videos/:videoId/check — Debug existence CDN
+// ─────────────────────────────────────────────────────────────
 router.get("/:videoId/check", isValidClient, async (req, res) => {
+  console.log(`${LOG_PREFIX} GET /:videoId/check`, {
+    videoId: req.params.videoId,
+    userId: req.userId,
+  });
+
   const video = await Video.findById(req.params.videoId);
-  if (!video) return res.status(404).json({ message: "Vidéo non trouvée en DB" });
+  if (!video) {
+    console.warn(`${LOG_PREFIX} check CDN: vidéo introuvable`, {
+      videoId: req.params.videoId,
+    });
+
+    return res.status(404).json({ message: "Vidéo non trouvée en DB" });
+  }
 
   try {
-    const baseCdnUrl = String(process.env.VIDEO_CDN_BASE_URL || "").replace(/\/+$/, "");
-    const encodedPath = String(video.publicId)
-      .split("/")
-      .filter(Boolean)
-      .map((segment) => encodeURIComponent(segment))
-      .join("/");
+    const baseCdnUrl = String(process.env.VIDEO_CDN_BASE_URL || "").replace(
+      /\/+$/,
+      ""
+    );
 
-    const path = `/${encodedPath}`;
+  // ✅ Décode le chemin B2 avant de construire rawPath
+const decodedStoragePath = decodeURIComponent(video.b2FileName || video.publicId || "");
+
+if (!decodedStoragePath) {
+  console.warn(`${LOG_PREFIX} chemin vidéo manquant en base`, { videoId: req.params.videoId });
+  return res.status(404).json({ message: "Vidéo introuvable." });
+}
+
+const rawPath = `/${String(decodedStoragePath).replace(/^\/+/, "")}`;
+
+const encodedPath = String(decodedStoragePath)
+  .split("/")
+  .filter(Boolean)
+  .map((segment) => encodeURIComponent(segment))
+  .join("/");
+
     const expiresAt = Math.floor(Date.now() / 1000) + 900;
-    const token = await signUrl(`${path}:${expiresAt}`, process.env.CDN_SIGNING_SECRET);
-    const videoUrl = `${baseCdnUrl}${path}?token=${token}&expires=${expiresAt}`;
+
+    // ✅ Même logique que la route principale : signer rawPath
+    const token = await signUrl(
+      `${rawPath}:${expiresAt}`,
+      process.env.CDN_SIGNING_SECRET
+    );
+
+    const videoUrl = `${baseCdnUrl}/${encodedPath}?token=${encodeURIComponent(token)}&expires=${expiresAt}`;
 
     const check = await fetch(videoUrl, { method: "HEAD" });
 
+    console.log(`${LOG_PREFIX} check CDN HEAD`, {
+      videoId: req.params.videoId,
+      status: check.status,
+      ok: check.ok,
+    });
+
     if (!check.ok) {
-      return res.status(404).json({ exists: false, status: check.status, publicId: video.publicId });
+      return res.status(404).json({
+        exists: false,
+        status: check.status,
+        publicId: video.b2FileName || video.publicId,
+      });
     }
 
-    return res.json({ exists: true, publicId: video.publicId, url: videoUrl });
+    return res.json({ exists: true, publicId: video.b2FileName || video.publicId, url: videoUrl });
   } catch (err) {
+    console.error(`${LOG_PREFIX} erreur check CDN`, err);
     return res.status(404).json({ exists: false, error: err.message });
   }
 });
 
+// ─────────────────────────────────────────────────────────────
+// Fonction de signature HMAC-SHA256 → base64
+// ─────────────────────────────────────────────────────────────
 async function signUrl(message, secret) {
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(

@@ -1,3 +1,5 @@
+// models/video.model.js
+
 import mongoose from "mongoose";
 
 const videoSchema = new mongoose.Schema(
@@ -12,22 +14,28 @@ const videoSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
-    publicId: {
+    courseSlug: {
       type: String,
       required: true,
       trim: true,
-      unique: true,
     },
-    chapterId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Chapter",
+    b2FileId: {
+      type: String,
       required: true,
     },
-    order: {
+    b2FileName: {
+      type: String,
+      required: true,
+    },
+    duration: {
       type: Number,
       default: 0,
     },
-    duration: {
+    size: {
+      type: Number,
+      default: 0,
+    },
+    order: {
       type: Number,
       default: 0,
     },
@@ -39,6 +47,6 @@ const videoSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-videoSchema.index({ chapterId: 1, order: 1 });
+videoSchema.index({ courseSlug: 1, order: 1 });
 
 export default mongoose.model("Video", videoSchema);

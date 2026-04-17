@@ -13,7 +13,7 @@ const BACK_URL = "http://localhost:3000";
 En production:
 
 ```js
-const BACK_URL = "https://smail-app-production.up.railway.app";
+const BACK_URL = "";
 ```
 
 ## Prefixes de routes montees

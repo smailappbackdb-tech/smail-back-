@@ -11,14 +11,12 @@ const toNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-
 router.use(isAdmin);
 
 // GET /api/admin/courses
 router.get("/courses", async (req, res) => {
   try {
     const courses = await Course.find().sort({ createdAt: -1 });
-
     return res.status(200).json({
       message: "Liste des cours recuperee avec succes.",
       courses,
@@ -45,7 +43,6 @@ router.put("/courses/:courseId", async (req, res) => {
       if (!normalizedTitle) {
         return res.status(400).json({ message: "title invalide." });
       }
-
       const duplicateTitle = await Course.findOne({
         _id: { $ne: courseId },
         title: normalizedTitle,
@@ -53,7 +50,6 @@ router.put("/courses/:courseId", async (req, res) => {
       if (duplicateTitle) {
         return res.status(409).json({ message: "Ce title existe deja." });
       }
-
       course.title = normalizedTitle;
     }
 
@@ -62,7 +58,6 @@ router.put("/courses/:courseId", async (req, res) => {
       if (!normalizedSlug) {
         return res.status(400).json({ message: "slug invalide." });
       }
-
       const duplicateSlug = await Course.findOne({
         _id: { $ne: courseId },
         slug: normalizedSlug,
@@ -70,7 +65,6 @@ router.put("/courses/:courseId", async (req, res) => {
       if (duplicateSlug) {
         return res.status(409).json({ message: "Ce slug existe deja." });
       }
-
       course.slug = normalizedSlug;
     }
 
@@ -79,7 +73,6 @@ router.put("/courses/:courseId", async (req, res) => {
     }
 
     await course.save();
-
     return res.status(200).json({
       message: "Cours mis a jour avec succes.",
       course,
@@ -100,10 +93,7 @@ router.delete("/courses/:courseId", async (req, res) => {
       return res.status(404).json({ message: "Cours non trouve." });
     }
 
-    const chapters = await Chapter.find({ courseId }).select("_id");
-    const chapterIds = chapters.map((chapter) => chapter._id);
-
-    const deletedVideos = await Video.deleteMany({ chapterId: { $in: chapterIds } });
+    const deletedVideos = await Video.deleteMany({ courseSlug: course.slug });
     const deletedChapters = await Chapter.deleteMany({ courseId });
     await Course.deleteOne({ _id: courseId });
 
@@ -132,7 +122,6 @@ router.get("/courses/:courseId/chapters", async (req, res) => {
     }
 
     const chapters = await Chapter.find({ courseId }).sort({ order: 1 });
-
     return res.status(200).json({
       message: "Liste des chapitres recuperee avec succes.",
       course,
@@ -187,7 +176,6 @@ router.put("/chapters/:chapterId", async (req, res) => {
     }
 
     await chapter.save();
-
     return res.status(200).json({
       message: "Chapitre mis a jour avec succes.",
       chapter,
@@ -208,14 +196,12 @@ router.delete("/chapters/:chapterId", async (req, res) => {
       return res.status(404).json({ message: "Chapitre non trouve." });
     }
 
-    const deletedVideos = await Video.deleteMany({ chapterId });
     await Chapter.deleteOne({ _id: chapterId });
 
     return res.status(200).json({
       message: "Chapitre supprime avec succes.",
       deleted: {
         chapters: 1,
-        videos: deletedVideos.deletedCount,
       },
     });
   } catch (error) {
@@ -234,7 +220,9 @@ router.get("/chapters/:chapterId/videos", async (req, res) => {
       return res.status(404).json({ message: "Chapitre non trouve." });
     }
 
-    const videos = await Video.find({ chapterId }).sort({ order: 1 });
+    // Les vidéos sont liées au courseSlug, on récupère via le cours du chapitre
+    const course = await Course.findById(chapter.courseId);
+    const videos = await Video.find({ courseSlug: course.slug }).sort({ order: 1 });
 
     return res.status(200).json({
       message: "Liste des videos recuperee avec succes.",
@@ -250,15 +238,13 @@ router.get("/chapters/:chapterId/videos", async (req, res) => {
 // PUT /api/admin/videos/:videoId
 router.put("/videos/:videoId", async (req, res) => {
   const { videoId } = req.params;
-  const { title, publicId, order, duration, description, isActive } = req.body;
-  const normalizedIncomingPublicId = String(publicId || "").trim();
+  const { title, b2FileId, b2FileName, courseSlug, order, duration, description, isActive } = req.body;
   const parsedOrder = order !== undefined ? toNumber(order) : undefined;
   const parsedDuration = duration !== undefined ? toNumber(duration) : undefined;
 
   if (order !== undefined && parsedOrder === null) {
     return res.status(400).json({ message: "order doit etre un number." });
   }
-
   if (duration !== undefined && parsedDuration === null) {
     return res.status(400).json({ message: "duration doit etre un number." });
   }
@@ -277,48 +263,38 @@ router.put("/videos/:videoId", async (req, res) => {
       video.title = normalizedTitle;
     }
 
-    if (publicId !== undefined) {
-      const normalizedPublicId = normalizedIncomingPublicId;
-      if (!normalizedPublicId) {
-        return res.status(400).json({ message: "publicId invalide." });
+    if (b2FileId !== undefined) {
+      const duplicate = await Video.findOne({ _id: { $ne: videoId }, b2FileId });
+      if (duplicate) {
+        return res.status(409).json({ message: "Cette video existe deja." });
       }
+      video.b2FileId = b2FileId;
+    }
 
-      const duplicatePublicId = await Video.findOne({
-        _id: { $ne: videoId },
-        publicId: normalizedPublicId,
-      });
-      if (duplicatePublicId) {
-        return res.status(409).json({
-          message: "Cette video existe deja.",
-        });
-      }
+    if (b2FileName !== undefined) {
+      video.b2FileName = b2FileName;
+    }
 
-      video.publicId = normalizedPublicId;
+    if (courseSlug !== undefined) {
+      video.courseSlug = courseSlug;
     }
 
     if (parsedOrder !== undefined) {
       const duplicateOrder = await Video.findOne({
         _id: { $ne: videoId },
-        chapterId: video.chapterId,
+        courseSlug: video.courseSlug,
         order: parsedOrder,
       });
       if (duplicateOrder) {
         return res.status(409).json({
-          message: "Une video avec ce order existe deja pour ce chapitre.",
+          message: "Une video avec ce order existe deja pour ce cours.",
         });
       }
-
       video.order = parsedOrder;
     }
 
-    if (parsedDuration !== undefined) {
-      video.duration = parsedDuration;
-    }
-
-    if (description !== undefined) {
-      video.description = String(description || "").trim();
-    }
-
+    if (parsedDuration !== undefined) video.duration = parsedDuration;
+    if (description !== undefined) video.description = String(description || "").trim();
     if (isActive !== undefined) {
       if (typeof isActive !== "boolean") {
         return res.status(400).json({ message: "isActive doit etre un boolean." });
@@ -327,11 +303,7 @@ router.put("/videos/:videoId", async (req, res) => {
     }
 
     await video.save();
-
-    return res.status(200).json({
-      message: "Video mise a jour avec succes.",
-      video,
-    });
+    return res.status(200).json({ message: "Video mise a jour avec succes.", video });
   } catch (error) {
     console.error("Erreur update video:", error);
     return res.status(500).json({ message: "Erreur serveur." });
@@ -349,7 +321,6 @@ router.delete("/videos/:videoId", async (req, res) => {
     }
 
     await Video.deleteOne({ _id: videoId });
-
     return res.status(200).json({
       message: "Video supprimee avec succes.",
       deleted: { videos: 1 },
@@ -365,9 +336,7 @@ router.post("/courses", async (req, res) => {
   const { title, slug, description = "" } = req.body;
 
   if (!title || !slug) {
-    return res.status(400).json({
-      message: "title et slug sont requis.",
-    });
+    return res.status(400).json({ message: "title et slug sont requis." });
   }
 
   try {
@@ -388,10 +357,7 @@ router.post("/courses", async (req, res) => {
       description: description?.trim?.() || "",
     });
 
-    return res.status(201).json({
-      message: "Cours cree avec succes.",
-      course,
-    });
+    return res.status(201).json({ message: "Cours cree avec succes.", course });
   } catch (error) {
     console.error("Erreur creation cours:", error);
     return res.status(500).json({ message: "Erreur serveur." });
@@ -429,10 +395,7 @@ router.post("/chapters", async (req, res) => {
       description: description?.trim?.() || "",
     });
 
-    return res.status(201).json({
-      message: "Chapitre cree avec succes.",
-      chapter,
-    });
+    return res.status(201).json({ message: "Chapitre cree avec succes.", chapter });
   } catch (error) {
     console.error("Erreur creation chapitre:", error);
     return res.status(500).json({ message: "Erreur serveur." });
@@ -442,58 +405,48 @@ router.post("/chapters", async (req, res) => {
 // POST /api/admin/videos
 router.post("/videos", async (req, res) => {
   const {
-    chapterId,
+    courseSlug,
     title,
-    publicId,
+    b2FileId,
+    b2FileName,
     order,
     duration = 0,
     description = "",
   } = req.body;
-  const normalizedIncomingPublicId = String(publicId || "").trim();
+
   const parsedOrder = toNumber(order);
   const parsedDuration = toNumber(duration) ?? 0;
 
-  if (!chapterId || !title || !normalizedIncomingPublicId || parsedOrder === null) {
+  if (!courseSlug || !title || !b2FileId || !b2FileName || parsedOrder === null) {
     return res.status(400).json({
-      message: "chapterId, title, publicId et order (number) sont requis.",
+      message: "courseSlug, title, b2FileId, b2FileName et order (number) sont requis.",
     });
   }
 
   try {
-    const chapter = await Chapter.findById(chapterId);
-    if (!chapter) {
-      return res.status(404).json({ message: "Chapitre non trouve." });
+    const existingVideo = await Video.findOne({ b2FileId });
+    if (existingVideo) {
+      return res.status(409).json({ message: "Cette video existe deja." });
     }
 
-    const existingPublicId = await Video.findOne({
-      publicId: normalizedIncomingPublicId,
-    });
-    if (existingPublicId) {
-      return res.status(409).json({
-        message: "Cette video existe deja.",
-      });
-    }
-
-    const duplicateOrder = await Video.findOne({ chapterId, order: parsedOrder });
+    const duplicateOrder = await Video.findOne({ courseSlug, order: parsedOrder });
     if (duplicateOrder) {
       return res.status(409).json({
-        message: "Une video avec ce order existe deja pour ce chapitre.",
+        message: "Une video avec ce order existe deja pour ce cours.",
       });
     }
 
     const video = await Video.create({
-      chapterId,
+      courseSlug,
       title: title.trim(),
-      publicId: normalizedIncomingPublicId,
+      b2FileId,
+      b2FileName,
       order: parsedOrder,
       duration: parsedDuration,
       description: description?.trim?.() || "",
     });
 
-    return res.status(201).json({
-      message: "Video creee avec succes.",
-      video,
-    });
+    return res.status(201).json({ message: "Video creee avec succes.", video });
   } catch (error) {
     console.error("Erreur creation video:", error);
     return res.status(500).json({ message: "Erreur serveur." });

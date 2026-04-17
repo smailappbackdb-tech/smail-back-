@@ -28,23 +28,39 @@ const toSafePathSegment = (value, fallback) => {
   return clean || fallback;
 };
 
-const getB2Auth = async () => {
+const getB2Auth = async (retries = 3) => {
   const credentials = Buffer.from(
     `${process.env.B2_KEY_ID}:${process.env.B2_APPLICATION_KEY}`
   ).toString("base64");
 
-  const response = await fetch(
-    "https://api.backblazeb2.com/b2api/v3/b2_authorize_account",
-    { method: "GET", headers: { Authorization: `Basic ${credentials}` } }
-  );
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(
+        "https://api.backblazeb2.com/b2api/v3/b2_authorize_account",
+        {
+          method: "GET",
+          headers: { Authorization: `Basic ${credentials}` },
+          signal: AbortSignal.timeout(30000), // 30 secondes
+        }
+      );
 
-  if (!response.ok) {
-    const details = await response.text();
-    throw new Error(`Echec autorisation B2: ${response.status} ${details}`);
+      if (!response.ok) {
+        const details = await response.text();
+        throw new Error(`Echec autorisation B2: ${response.status} ${details}`);
+      }
+
+      return response.json();
+
+    } catch (err) {
+      console.warn(`Auth B2 tentative ${attempt}/${retries} échouée:`, err.message);
+      if (attempt < retries) {
+        await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+      } else {
+        throw err;
+      }
+    }
   }
-  return response.json();
 };
-
 const getB2UploadSlot = async ({ apiUrl, authorizationToken }) => {
   const response = await fetch(`${apiUrl}/b2api/v3/b2_get_upload_url`, {
     method: "POST",
