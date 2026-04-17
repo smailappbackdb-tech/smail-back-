@@ -157,9 +157,10 @@ Toutes les routes ci-dessous sont protegees admin (JWT admin requis).
 
 ```json
 {
-  "chapterId": "ID_DU_CHAPITRE",
+  "courseSlug": "masterclasseditgn",
   "title": "Video 1",
-  "publicId": "formations/masterclasseditgn/chapter-1/1712910012345-video-1-a1b2c3d4.mp4",
+  "b2FileId": "4_z943feaea53fc843a90d9001f_f114531abc91bd2a2_d20260417_m155009_c003_v0312031_t0038_u01776441009538",
+  "b2FileName": "formations/masterclasseditgn/chapter-1/1712910012345-video-1-a1b2c3d4.mp4",
   "order": 1,
   "duration": 540,
   "description": "Premiere video"
@@ -168,7 +169,7 @@ Toutes les routes ci-dessous sont protegees admin (JWT admin requis).
 
 ### Upload video depuis dashboard admin
 
-- POST /api/admin/upload
+- POST /api/dashboardinformation/upload
 - Content-Type: multipart/form-data
 - Champs form-data:
   - video (fichier, obligatoire)
@@ -176,7 +177,20 @@ Toutes les routes ci-dessous sont protegees admin (JWT admin requis).
   - courseSlug (optionnel)
   - chapterOrder (optionnel)
 
-Le backend upload la video sur Backblaze B2 et retourne un `publicId` a sauvegarder ensuite dans `POST /api/admin/videos`.
+Reponse attendue:
+
+```json
+{
+  "message": "Upload video reussi.",
+  "publicId": "formations/masterclasseditgn/chapter-1/1712910012345-video-1-a1b2c3d4.mp4",
+  "fileId": "4_z943feaea53fc843a90d9001f_f114531abc91bd2a2_d20260417_m155009_c003_v0312031_t0038_u01776441009538"
+}
+```
+
+Le frontend doit ensuite envoyer ces valeurs dans `POST /api/admin/videos` avec ce mapping:
+
+- `fileId` -> `b2FileId`
+- `publicId` -> `b2FileName`
 
 ### Mise a jour admin
 
@@ -189,6 +203,8 @@ Le backend upload la video sur Backblaze B2 et retourne un `publicId` a sauvegar
 - DELETE /api/admin/courses/:courseId
 - DELETE /api/admin/chapters/:chapterId
 - DELETE /api/admin/videos/:videoId
+
+La suppression cote admin nettoie aussi Backblaze B2 avant de retirer l'entree Mongo.
 
 ## 7) Cote client: lire le cours et la video
 
@@ -273,8 +289,8 @@ La valeur url est temporaire (expire vite). Si elle expire, il faut rappeler le 
 | GET | /api/admin/chapters/:chapterId/videos | Oui (Admin) | Lister videos d'un chapitre |
 | POST | /api/admin/courses | Oui (Admin) | Creer formation |
 | POST | /api/admin/chapters | Oui (Admin) | Creer chapitre |
-| POST | /api/admin/videos | Oui (Admin) | Creer video (publicId existant) |
-| POST | /api/admin/upload | Oui (Admin) | Upload video vers B2 |
+| POST | /api/admin/videos | Oui (Admin) | Creer video (b2FileId + b2FileName) |
+| POST | /api/dashboardinformation/upload | Oui (Admin) | Upload video vers B2 |
 | PUT | /api/admin/courses/:courseId | Oui (Admin) | Modifier formation |
 | PUT | /api/admin/chapters/:chapterId | Oui (Admin) | Modifier chapitre |
 | PUT | /api/admin/videos/:videoId | Oui (Admin) | Modifier video |

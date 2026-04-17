@@ -48,5 +48,7 @@ const videoSchema = new mongoose.Schema(
 );
 
 videoSchema.index({ courseSlug: 1, order: 1 });
+videoSchema.index({ b2FileId: 1 }, { unique: true });
+videoSchema.index({ b2FileName: 1 });
 
 export default mongoose.model("Video", videoSchema);

@@ -109,7 +109,8 @@ const uploadToB2Large = async ({ buffer, fileName, contentType, apiUrl, authoriz
     },
     body: JSON.stringify({
       bucketId: process.env.B2_BUCKET_ID,
-      fileName: encodeURIComponent(fileName),
+      // B2 attend un chemin brut ici (comme en small upload header avant encodage HTTP).
+      fileName,
       contentType: contentType || "b2/x-auto",
     }),
     signal: AbortSignal.timeout(30000),
@@ -288,7 +289,7 @@ router.post("/upload", isAdmin, (req, res, next) => {
 
     return res.status(201).json({
       message: "Upload video reussi.",
-      publicId: uploaded.fileName,
+      publicId: fileName,
       fileId: uploaded.fileId,
     });
   } catch (err) {

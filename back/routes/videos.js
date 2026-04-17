@@ -10,6 +10,30 @@ const LOG_PREFIX = "[videos]";
 
 const getMissingEnv = () => REQUIRED_ENV.filter((key) => !process.env[key]);
 
+const decodeStoragePath = (value) => {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+
+  try {
+    return decodeURIComponent(normalized);
+  } catch {
+    return normalized;
+  }
+};
+
+const normalizeStoragePathForSigning = (value) => {
+  const normalized = String(value || "").trim().replace(/^\/+/, "");
+  if (!normalized) return "";
+
+  // Legacy objects may have been uploaded with encoded separators (%2F) as literal chars.
+  // In that case we must preserve %2F for signature and URL generation.
+  if (/%2F/i.test(normalized)) {
+    return normalized;
+  }
+
+  return decodeStoragePath(normalized);
+};
+
 const VIDEO_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const VIDEO_RATE_LIMIT_MAX_REQUESTS = 5;
 const videoRateLimitStore = new Map();
@@ -116,7 +140,9 @@ router.get("/:videoId/url", isValidClient, videoRateLimit, async (req, res) => {
     }
 
     // Le chemin B2 est stocké en base dans b2FileName, avec fallback legacy sur publicId.
-    const storagePath = video.b2FileName || video.publicId;
+    const storagePath = normalizeStoragePathForSigning(
+      video.b2FileName || video.publicId
+    );
 
     if (!storagePath) {
       console.warn(`${LOG_PREFIX} chemin vidéo manquant en base`, { videoId });
@@ -141,19 +167,9 @@ router.get("/:videoId/url", isValidClient, videoRateLimit, async (req, res) => {
       .map((segment) => encodeURIComponent(segment))
       .join("/");
 
-    // ✅ On signe rawPath (identique à url.pathname côté worker)
-   // ✅ On signe rawPath (identique à url.pathname côté worker)
-const messageToSign = `${rawPath}:${expiresAt}`;
-
-// 🔍 DEBUG TEMPORAIRE
-console.log("[DEBUG SIGN] rawPath      :", rawPath);
-console.log("[DEBUG SIGN] expiresAt    :", expiresAt);
-console.log("[DEBUG SIGN] message      :", messageToSign);
-console.log("[DEBUG SIGN] secret       :", process.env.CDN_SIGNING_SECRET);
-
-const token = await signUrl(messageToSign, process.env.CDN_SIGNING_SECRET);
-
-console.log("[DEBUG SIGN] token généré :", token);
+    // On signe rawPath (identique à url.pathname côté worker)
+    const messageToSign = `${rawPath}:${expiresAt}`;
+    const token = await signUrl(messageToSign, process.env.CDN_SIGNING_SECRET);
     // ✅ token encodé dans l'URL pour éviter les caractères spéciaux base64 (+, /, =)
     const videoUrl = `${baseCdnUrl}/${encodedPath}?token=${encodeURIComponent(token)}&expires=${expiresAt}`;
 
@@ -259,7 +275,9 @@ router.get("/:videoId/check", isValidClient, async (req, res) => {
     );
 
   // ✅ Décode le chemin B2 avant de construire rawPath
-const decodedStoragePath = decodeURIComponent(video.b2FileName || video.publicId || "");
+const decodedStoragePath = normalizeStoragePathForSigning(
+  video.b2FileName || video.publicId || ""
+);
 
 if (!decodedStoragePath) {
   console.warn(`${LOG_PREFIX} chemin vidéo manquant en base`, { videoId: req.params.videoId });
