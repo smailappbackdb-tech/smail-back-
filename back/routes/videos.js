@@ -168,11 +168,10 @@ router.get("/:videoId/url", isValidClient, videoRateLimit, async (req, res) => {
       .join("/");
 
     // On signe rawPath (identique à url.pathname côté worker)
-    const messageToSign = `${rawPath}:${expiresAt}`;
+    const messageToSign = `${rawPath}:${expiresAt}:${req.userId}`;
     const token = await signUrl(messageToSign, process.env.CDN_SIGNING_SECRET);
     // ✅ token encodé dans l'URL pour éviter les caractères spéciaux base64 (+, /, =)
-    const videoUrl = `${baseCdnUrl}/${encodedPath}?token=${encodeURIComponent(token)}&expires=${expiresAt}`;
-
+    const videoUrl = `${baseCdnUrl}/${encodedPath}?token=${encodeURIComponent(token)}&expires=${expiresAt}&uid=${req.userId}`;
     console.log(`${LOG_PREFIX} URL signée générée`, {
       videoId,
       videoTitle: video.title,
@@ -296,11 +295,11 @@ const encodedPath = String(decodedStoragePath)
 
     // ✅ Même logique que la route principale : signer rawPath
     const token = await signUrl(
-      `${rawPath}:${expiresAt}`,
+      `${rawPath}:${expiresAt}:${req.userId}`,
       process.env.CDN_SIGNING_SECRET
     );
 
-    const videoUrl = `${baseCdnUrl}/${encodedPath}?token=${encodeURIComponent(token)}&expires=${expiresAt}`;
+    const videoUrl = `${baseCdnUrl}/${encodedPath}?token=${encodeURIComponent(token)}&expires=${expiresAt}&uid=${req.userId}`;
 
     const check = await fetch(videoUrl, { method: "HEAD" });
 
@@ -315,6 +314,7 @@ const encodedPath = String(decodedStoragePath)
         exists: false,
         status: check.status,
         publicId: video.b2FileName || video.publicId,
+        uid: req.userId,
       });
     }
 

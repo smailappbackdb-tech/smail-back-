@@ -170,12 +170,20 @@ Toutes les routes ci-dessous sont protegees admin (JWT admin requis).
 ### Upload video depuis dashboard admin
 
 - POST /api/dashboardinformation/upload
+- Alias disponible aussi: POST /api/admin/upload
 - Content-Type: multipart/form-data
 - Champs form-data:
   - video (fichier, obligatoire)
   - title (optionnel)
   - courseSlug (optionnel)
   - chapterOrder (optionnel)
+- Contraintes backend:
+  - Le fichier doit avoir un mimetype video/*
+  - Taille max: 2GB (sinon 400)
+  - title/courseSlug/chapterOrder sont sanitizes en slug (a-z0-9 + tirets)
+  - Si title absent: video
+  - Si courseSlug absent: cours
+  - Si chapterOrder absent: 0
 
 Reponse attendue:
 
@@ -192,11 +200,62 @@ Le frontend doit ensuite envoyer ces valeurs dans `POST /api/admin/videos` avec 
 - `fileId` -> `b2FileId`
 - `publicId` -> `b2FileName`
 
+Flux frontend recommande (obligatoire pour lier upload + metadata):
+
+1. Upload du fichier brut vers B2 via POST /api/dashboardinformation/upload
+2. Creation de l'entree video Mongo via POST /api/admin/videos avec b2FileId + b2FileName
+
+Exemple payload etape 2:
+
+```json
+{
+  "courseSlug": "masterclasseditgn",
+  "title": "Video 1",
+  "b2FileId": "<fileId recu a l'etape 1>",
+  "b2FileName": "<publicId recu a l'etape 1>",
+  "order": 1,
+  "duration": 540,
+  "description": "Premiere video"
+}
+```
+
+Erreurs frequentes cote upload admin:
+
+- 400: pas de fichier video, mauvais type, ou fichier > 2GB
+- 401/403: token absent/invalide ou non admin
+- 500: variables B2 manquantes (B2_KEY_ID, B2_APPLICATION_KEY, B2_BUCKET_ID)
+
 ### Mise a jour admin
 
 - PUT /api/admin/courses/:courseId
 - PUT /api/admin/chapters/:chapterId
 - PUT /api/admin/videos/:videoId
+
+#### Basculer une video active/inactive (admin)
+
+Le basculement se fait via la route de mise a jour video:
+
+- PUT /api/admin/videos/:videoId
+
+Body JSON minimal:
+
+```json
+{
+  "isActive": false
+}
+```
+
+- `isActive: false` => masque/desactive la video
+- `isActive: true` => reactive la video
+- Le champ doit etre un boolean (`true` ou `false`), sinon la route renvoie `400`
+
+Exemple Postman:
+
+- Method: `PUT`
+- URL: `http://localhost:3000/api/admin/videos/ID_VIDEO`
+- Header: `Authorization: Bearer <TOKEN_ADMIN>`
+- Header: `Content-Type: application/json`
+- Body: `{"isActive": false}`
 
 ### Suppression admin
 
@@ -204,7 +263,12 @@ Le frontend doit ensuite envoyer ces valeurs dans `POST /api/admin/videos` avec 
 - DELETE /api/admin/chapters/:chapterId
 - DELETE /api/admin/videos/:videoId
 
-La suppression cote admin nettoie aussi Backblaze B2 avant de retirer l'entree Mongo.
+Important (etat actuel du code):
+
+- DELETE /api/admin/courses/:courseId supprime le cours + chapitres + videos en base Mongo
+- DELETE /api/admin/chapters/:chapterId supprime uniquement le chapitre en base Mongo
+- DELETE /api/admin/videos/:videoId supprime uniquement la video en base Mongo
+- Aucun DELETE admin ne supprime actuellement le fichier Backblaze B2
 
 ## 7) Cote client: lire le cours et la video
 
@@ -212,7 +276,8 @@ La suppression cote admin nettoie aussi Backblaze B2 avant de retirer l'entree M
 
 - GET /api/courses/:courseSlug
 - Ex: /api/courses/masterclasseditgn
-- Reponse: course + chapters + videos + progression utilisateur
+- Auth: token optionnel (route accessible sans token)
+- Reponse: course + chapters + videos + progression utilisateur (si token valide)
 
 ### Demander une URL video signee
 
@@ -246,16 +311,25 @@ La valeur url est temporaire (expire vite). Si elle expire, il faut rappeler le 
 
 ## 8) Securite appliquee
 
-- JWT requis sur routes protegees
+- JWT requis sur routes protegees (admin, username, userpassword, changestatusclient)
 - Role admin exige sur /api/admin/*
-- status client exige pour lecture videos
+- status client exige pour l'URL video signee et mark-watched
 - URL videos generees depuis le CDN
 - Rate limit sur demande d'URL video
 - Headers no-store/no-cache sur reponse URL signee
 - Secrets B2 conserves cote backend uniquement
 - Validation des inputs (order, IDs, doublons, etc.)
 
-## 9) Codes d'erreur frequents
+## 9) Point d'attention important pour le frontend
+
+Le backend actuel ne stocke pas de champ chapterId dans le modele Video. Consequences:
+
+- POST /api/admin/videos ne prend pas chapterId
+- GET /api/admin/chapters/:chapterId/videos retourne les videos du cours, pas un filtrage strict par chapitre
+
+Si le frontend doit absolument afficher des videos par chapitre avec certitude, il faut ajouter chapterId dans le modele + routes backend.
+
+## 10) Codes d'erreur frequents
 
 - 400: payload invalide (champ manquant ou type incorrect)
 - 401: token manquant/invalide
@@ -265,7 +339,7 @@ La valeur url est temporaire (expire vite). Si elle expire, il faut rappeler le 
 - 429: trop de requetes (rate limit)
 - 500: erreur serveur/config manquante
 
-## 10) Tableau recap des routes
+## 11) Tableau recap des routes
 
 | Methode | Route | Auth | Description |
 |---|---|---|---|
@@ -291,13 +365,14 @@ La valeur url est temporaire (expire vite). Si elle expire, il faut rappeler le 
 | POST | /api/admin/chapters | Oui (Admin) | Creer chapitre |
 | POST | /api/admin/videos | Oui (Admin) | Creer video (b2FileId + b2FileName) |
 | POST | /api/dashboardinformation/upload | Oui (Admin) | Upload video vers B2 |
+| POST | /api/admin/upload | Oui (Admin) | Alias upload video vers B2 |
 | PUT | /api/admin/courses/:courseId | Oui (Admin) | Modifier formation |
 | PUT | /api/admin/chapters/:chapterId | Oui (Admin) | Modifier chapitre |
-| PUT | /api/admin/videos/:videoId | Oui (Admin) | Modifier video |
+| PUT | /api/admin/videos/:videoId | Oui (Admin) | Modifier video (dont `isActive`) |
 | DELETE | /api/admin/courses/:courseId | Oui (Admin) | Supprimer formation (cascade chapitres/videos) |
-| DELETE | /api/admin/chapters/:chapterId | Oui (Admin) | Supprimer chapitre (cascade videos) |
+| DELETE | /api/admin/chapters/:chapterId | Oui (Admin) | Supprimer chapitre |
 | DELETE | /api/admin/videos/:videoId | Oui (Admin) | Supprimer video |
-| GET | /api/courses/:courseSlug | Oui (Client valide) | Lire cours complet |
-| GET | /api/videos/:videoId/url | Oui (Client valide) | URL video signee |
-| POST | /api/videos/:videoId/mark-watched | Oui (Client valide) | Marquer video vue |
-| GET | /api/videos/:videoId/check | Oui (Client valide) | Debug existence CDN |
+| GET | /api/courses/:courseSlug | Optionnel | Lire cours complet |
+| GET | /api/videos/:videoId/url | Oui (Client avec status=true) | URL video signee |
+| POST | /api/videos/:videoId/mark-watched | Oui (Client avec status=true) | Marquer video vue |
+| GET | /api/videos/:videoId/check | Oui (JWT requis) | Debug existence CDN |
