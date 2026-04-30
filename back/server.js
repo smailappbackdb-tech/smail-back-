@@ -54,10 +54,10 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// ✅ Timeout 5min (300000ms) pour uploads de video
+// ✅ Timeout 15min (900000ms) pour uploads de video
 app.use((req, res, next) => {
   if (req.path.includes('/upload') || req.path.includes('/dashboardinformation')) {
-    res.setTimeout(300000); // 5 minutes
+    res.setTimeout(900000); // 15 minutes
   }
   next();
 });
