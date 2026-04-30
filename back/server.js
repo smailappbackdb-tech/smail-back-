@@ -53,6 +53,15 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.use(express.json());
+
+// ✅ Timeout 5min (300000ms) pour uploads de video
+app.use((req, res, next) => {
+  if (req.path.includes('/upload') || req.path.includes('/dashboardinformation')) {
+    res.setTimeout(300000); // 5 minutes
+  }
+  next();
+});
+
 app.use("/api/auth", authRoute);
 app.use("/api/dashboardinformation", dashboardLogicRoute);
 app.use("/api/username", usernameRoute);
