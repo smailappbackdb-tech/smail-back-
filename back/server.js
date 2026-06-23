@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import cors from "cors";
 import express from "express";
 import connectDB from "./DB/connection.js";
@@ -10,8 +13,6 @@ import changeStatusClientRoute from "./routes/changestatusclient.js";
 import coursesRoute from "./routes/courses.js";
 import videosRoute from "./routes/videos.js";
 import adminRoute from "./routes/admin.js";
-import dotenv from "dotenv";
-dotenv.config(); 
 
 
 const app = express();
