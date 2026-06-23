@@ -89,7 +89,22 @@ await api("/api/auth/register", {
 ### Forgot/Reset password
 
 - POST /api/auth/forgot-password
-- POST /api/auth/reset-password
+- POST /api/auth/reset-password/:token
+
+#### Variables d'environnement pour le reset password
+
+- `RESEND_API_KEY`
+- `CLIENT_URL`
+
+Optionnel:
+
+- `RESEND_FROM` pour personnaliser l'expediteur
+
+Flux prod:
+
+1. Le frontend envoie `POST /api/auth/forgot-password` avec `{ "email": "..." }`
+2. Le backend genere un token, le stocke en base, puis envoie un email avec un lien vers `CLIENT_URL/reset-password?token=...`
+3. Le frontend lit le token dans l'URL et appelle `POST /api/auth/reset-password/:token` avec `{ "newPassword": "..." }`
 
 ## 2) Profil utilisateur
 

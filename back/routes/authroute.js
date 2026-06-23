@@ -2,10 +2,46 @@ import express from "express";
 import JWT from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
+import { Resend } from "resend";
 import User from "../models/client.js";
 import passport from "../services/passport.js";
 
 const router = express.Router();
+const resendApiKey = process.env.RESEND_API_KEY;
+const resend = resendApiKey ? new Resend(resendApiKey) : null;
+
+const getResetPasswordUrl = (token) => {
+  const clientUrl = String(process.env.CLIENT_URL || "").replace(/\/+$/, "");
+  return `${clientUrl}/reset-password?token=${encodeURIComponent(token)}`;
+};
+
+const sendResetPasswordEmail = async (email, resetUrl) => {
+  if (!resend) {
+    console.warn("RESEND_API_KEY missing: reset email not sent.", { email, resetUrl });
+    return;
+  }
+
+  const fromAddress = process.env.RESEND_FROM || "Smail App <onboarding@resend.dev>";
+
+  await resend.emails.send({
+    from: fromAddress,
+    to: [email],
+    subject: "Réinitialisation de votre mot de passe",
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
+        <h2 style="margin: 0 0 16px;">Réinitialisation du mot de passe</h2>
+        <p>Vous avez demandé une réinitialisation de mot de passe. Cliquez sur le bouton ci-dessous pour définir un nouveau mot de passe.</p>
+        <p style="margin: 24px 0;">
+          <a href="${resetUrl}" style="background:#111827;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;display:inline-block;">Réinitialiser mon mot de passe</a>
+        </p>
+        <p>Ce lien expire dans 1 heure.</p>
+        <p>Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet email.</p>
+        <p style="word-break: break-all; color: #6b7280;">${resetUrl}</p>
+      </div>
+    `,
+    text: `Réinitialisez votre mot de passe ici: ${resetUrl}\n\nCe lien expire dans 1 heure.`,
+  });
+};
 
 // ─────────────────────────────────────────
 // GOOGLE AUTH
@@ -191,10 +227,8 @@ router.post("/forgot-password", async (req, res) => {
     user.resetPasswordExpires = Date.now() + 3600000; // 1h
     await user.save();
 
-    const resetUrl = `${process.env.CLIENT_URL}/reset-password?token=${token}`;
-
-    // 🚧 Temporaire — remplacer par sendResetPasswordEmail(user.email, resetUrl)
-    console.log("Reset URL (dev only):", resetUrl);
+    const resetUrl = getResetPasswordUrl(token);
+    await sendResetPasswordEmail(user.email, resetUrl);
 
     res.json({
       message: "Si cet email existe, un lien de réinitialisation a été envoyé.",
@@ -209,8 +243,9 @@ router.post("/forgot-password", async (req, res) => {
 // RESET PASSWORD
 // ─────────────────────────────────────────
 
-router.post("/reset-password", async (req, res) => {
-  const { token, newPassword } = req.body;
+router.post("/reset-password/:token", async (req, res) => {
+  const { token } = req.params;
+  const { newPassword } = req.body;
 
   if (!token || !newPassword) {
     return res
